@@ -1,0 +1,69 @@
+---
+title: "scRNAseq Monocle3"
+author: "Ekaterina Takmakova"
+date: "11 5 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+all_times <- list()  # store the time for each chunk
+knitr::knit_hooks$set(time_it = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      now <<- Sys.time()
+    } else {
+      res <- difftime(Sys.time(), now, units = "secs")
+      all_times[[options$label]] <<- res
+    }
+  }
+}))
+knitr::opts_chunk$set(
+  tidy = TRUE,
+  tidy.opts = list(width.cutoff = 95),
+  message = FALSE,
+  warning = FALSE,
+  time_it = TRUE
+)
+```
+
+# Trajectory analysis
+
+```{r}
+
+library(monocle3)
+library(ggplot2)
+library(dplyr)
+library(xlsx)
+library(openxlsx)
+library(Matrix)
+
+# Setup the Monocle Object
+thymus <- load_mm_data(mat_path = "C:/Users/koniaeva/R/seurat_GSE130812_ETP_DN2/data/rep_1/matrix.mtx", feature_anno_path = "C:/Users/koniaeva/R/seurat_GSE130812_ETP_DN2/data/rep_1/genes.tsv", cell_anno_path = "C:/Users/koniaeva/R/seurat_GSE130812_ETP_DN2/data/rep_1/barcodes.tsv")
+
+# To plot gene expression, gene names should be stored in rowRanges@elementMetadata@listData[["gene_short_name"]]
+thymus@rowRanges@elementMetadata@listData[["gene_short_name"]] <- thymus@rowRanges@elementMetadata@listData[["V2"]]
+
+# Assign cells to partitions
+thymus <- preprocess_cds(thymus, method = "PCA", num_dim = 100, norm_method = "log")
+thymus <- reduce_dimension(thymus, reduction_method = "UMAP", preprocess_method = "PCA")
+thymus <- cluster_cells(thymus, reduction_method = "UMAP", cluster_method = "leiden", resolution = 0.002)
+plot_cells(thymus, color_cells_by = "partition",  label_cell_groups = FALSE)
+plot_cells(thymus, genes=c("Flt3", "Il2ra", "Bcl11b"), label_cell_groups = FALSE)
+
+# Learn the trajectory graph
+thymus <- learn_graph(thymus)
+plot_cells(thymus, color_cells_by = "partition", label_leaves=FALSE, label_cell_groups = FALSE, label_branch_points=FALSE)
+
+# Order cells in pseudotime
+thymus <- order_cells(thymus)
+plot_cells(thymus, color_cells_by = "partition", label_leaves=FALSE, label_cell_groups = FALSE, graph_label_size = 0.5, label_branch_points=FALSE)
+plot_cells(thymus, color_cells_by = "pseudotime", label_cell_groups=FALSE, label_roots = FALSE, label_leaves=FALSE, label_branch_points=FALSE, graph_label_size=0.5)
+
+# Look at gene dynamics as a function of pseudotime
+pattern_genes <- c("Flt3", "Lmo2", "Tcf7", "Il2ra", "Gata3", "Bcl11b")
+thymus_subset <- thymus[rowData(thymus)$gene_short_name %in% pattern_genes]
+plot_genes_in_pseudotime(thymus_subset, vertical_jitter = NULL, panel_order = c("Flt3", "Lmo2", "Tcf7", "Gata3", "Il2ra", "Bcl11b"), cell_size = 0.07, min_expr=0.1)
+
+```
+
